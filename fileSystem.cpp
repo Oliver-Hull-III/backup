@@ -7,6 +7,11 @@
 //
 
 #include "fileSystem.hpp"
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 using namespace std;
 
 #define OFFSET 259
@@ -111,26 +116,27 @@ void fileSystem::create(string ssfsFName){
 }
 void fileSystem::import(string ssfsFName, string unixFName){
 
-	ofstream diskFile;
-	diskFile.open(diskName, ios::in | ios::out | ios::binary | ios::ate);
-
-
 	
-
 	//find index in iNodeList where ssfs file is
 	int iNodeIndex;
 	for(iNodeIndex = 0; iNodeIndex<256; iNodeIndex++)
 		if(iNodeList[iNodeIndex].getFileName() == ssfsFName)
 			break;
-
-
+	
+	//set file size
 	iNodeList[iNodeIndex].fSize = getFileSize(unixFName);
 
-											  
+	
+	
+	
+	//open the disk file
+	int diskFile_descriptor = open(unixFName.c_str(), "O_RDWR");
+
+	
+	
+	
 	//open the unix file
-	ifstream unixFile;
-	unixFile.open(unixFName, ios::binary | ios::in);
-		  
+	int unixFile_descriptor = open(unixFName.c_str(), "O_RDWR");
 	
 	
 	
@@ -141,25 +147,32 @@ void fileSystem::import(string ssfsFName, string unixFName){
 	
 	//used to keep track of file size
 	int blocksRead = 0;
+	int bytesRead = 0;
 	
 	
+	
+	int bytesToWrite = blockSize;
 	
 	
 	//MARK: Need to use fileSize instead of .eof
-	while(!unixFile.eof()){
+	while(bytesRead != iNodeList[iNodeIndex].fSize){
+		
 		
 		blocksRead++;
-		
-		//read 1 block of data from unixFile
-		cout<<"blockSize: "<<blockSize<<endl;
 	
-		
-		
-		
-		
-		//MARK: BUG!!!! reads blockSize/2 bytes instead of blockSize
+																										//read 1 block of data from unixFile
+		if(iNodeList[iNodeIndex].fSize - bytesRead >= blockSize){
+			read(unixFile_descriptor, toBeWritten, blockSize);
 
-		unixFile.read(toBeWritten,blockSize);
+		}
+		else{																							//read portion of block
+			
+			read(unixFile_descriptor, toBeWritten, iNodeList[iNodeIndex].fSize - bytesRead);
+			bytesToWrite = iNodeList[iNodeIndex].fSize - bytesRead;
+		}
+		
+		bytesRead += bytesToWrite;
+		
 		
 		cout<<"toBeWritten "<<toBeWritten<<";"<<endl;
 		
@@ -180,11 +193,8 @@ void fileSystem::import(string ssfsFName, string unixFName){
 					
 					
 					//Write toBeWritten to ( (offset + blockNum)* blockSize)
-					diskFile.seekp((OFFSET+blockNum)*blockSize);
-				
-					cout<<diskFile.tellp()<<endl;
-
-					diskFile.write(toBeWritten,blockSize);
+					lseek(diskFile_descriptor,(OFFSET+blockNum)*blockSize, 0);
+					write(diskFile_descriptor,toBeWritten,blockSize);
 
 					
 					
@@ -210,9 +220,10 @@ void fileSystem::import(string ssfsFName, string unixFName){
 					
 				
 					iNodeList[iNodeIndex].ib.blockTable.push_back(blockNum);
+
 					
-					diskFile.seekp((OFFSET+blockNum)*blockSize);
-					diskFile.write(toBeWritten,blockSize);
+					lseek(diskFile_descriptor,(OFFSET+blockNum)*blockSize, 0);
+					write(diskFile_descriptor,toBeWritten,blockSize);
 
 					
 					
@@ -257,8 +268,10 @@ void fileSystem::import(string ssfsFName, string unixFName){
 					(iNodeList[iNodeIndex].doubleIndBlockTable.front()).blockTable.push_back(blockNum);
 	
 					
-					diskFile.seekp((OFFSET+blockNum)*blockSize);
-					diskFile.write(toBeWritten,blockSize);
+					lseek(diskFile_descriptor,(OFFSET+blockNum)*blockSize, 0);
+					write(diskFile_descriptor,toBeWritten,blockSize);
+
+					
 					
 				}
 				
@@ -267,8 +280,8 @@ void fileSystem::import(string ssfsFName, string unixFName){
 		}
 		
 	}
-	unixFile.close();
-	diskFile.close();
+	close(unixFile_descriptor);
+	close(diskFile_descriptor);
 }
 
 
